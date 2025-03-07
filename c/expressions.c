@@ -131,6 +131,8 @@ boolean userInterrupted = FALSE;
 boolean terminationSignalReceived = FALSE;
 
 boolean heuristicStoppedGeneration = FALSE;
+unsigned long int unlabeled_tree_limit = 0;
+boolean unlabeledTreeLimitReached = FALSE;
 
 boolean onlyUnlabeled = FALSE;
 boolean onlyLabeled = FALSE;
@@ -1335,6 +1337,10 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
 
 void handleTree(TREE *tree){
     treeCount++;
+    if (treeCount > unlabeled_tree_limit){
+      unlabeledTreeLimitReached = TRUE;
+      return;
+    }
     if(onlyUnlabeled) return;
     
     //start by ordering nodes
@@ -2098,6 +2104,7 @@ int processOptions(int argc, char **argv) {
         {"sufficient", no_argument, NULL, 0},
         {"necessary", no_argument, NULL, 0},
         {"maximum-complexity", no_argument, NULL, 0},
+        {"unlabeled-tree-limit", required_argument, NULL, 0},
         {"help", no_argument, NULL, 'h'},
         {"verbose", no_argument, NULL, 'v'},
         {"unlabeled", no_argument, NULL, 'u'},
@@ -2200,6 +2207,9 @@ int processOptions(int argc, char **argv) {
                         break;
                     case 21:
                         report_maximum_complexity_reached = TRUE;
+                        break;
+                    case 22:
+                        unlabeled_tree_limit = strtoul(optarg, NULL, 10);
                         break;
                     default:
                         fprintf(stderr, "Illegal option index %d.\n", option_index);
@@ -2428,6 +2438,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Generation process was interrupted by user.\n");
     } else if(terminationSignalReceived){
         fprintf(stderr, "Generation process was killed.\n");
+    } else if(unlabeledTreeLimitReached){
+        fprintf(stderr, "Generation process was stopped because the maximum number of unlabeled trees was explored.\n");
     }
     
     //print some statistics
