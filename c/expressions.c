@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <float.h>
+#include <limits.h>
 //#include <malloc.h>
 
 #include "bintrees.h"
@@ -121,7 +122,7 @@ unsigned long int treeCount = 0;
 unsigned long int labeledTreeCount = 0;
 unsigned long int validExpressionsCount = 0;
 
-int maximum_complexity_reached = -1;
+unsigned long int complexity = 0;
 boolean report_maximum_complexity_reached = FALSE;
 
 unsigned long int timeOut = 0;
@@ -131,8 +132,8 @@ boolean userInterrupted = FALSE;
 boolean terminationSignalReceived = FALSE;
 
 boolean heuristicStoppedGeneration = FALSE;
-unsigned long int unlabeled_tree_limit = 0;
-boolean unlabeledTreeLimitReached = FALSE;
+unsigned long int complexity_limit = (INT_MAX) ;
+boolean complexity_limit_reached = FALSE;
 
 boolean onlyUnlabeled = FALSE;
 boolean onlyLabeled = FALSE;
@@ -740,7 +741,7 @@ void grinvinHeuristicPostProcessing(){
 
 //------ Stop generation -------
 
-boolean shouldGenerationProcessBeTerminated(){
+boolean shouldGenerationProcessBeTerminated(int complexity){
     if(heuristicStopConditionReached!=NULL){
         if(heuristicStopConditionReached()){
             heuristicStoppedGeneration = TRUE;
@@ -748,6 +749,10 @@ boolean shouldGenerationProcessBeTerminated(){
         }
     }
     if(timeOutReached || userInterrupted || terminationSignalReceived){
+        return TRUE;
+    }
+    if (complexity > complexity_limit) {
+        complexity_limit_reached = TRUE;
         return TRUE;
     }
     
@@ -1294,7 +1299,8 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
                     generateLabeledTree(tree, orderedNodes, pos+1);
                     invariantsUsed[i] = FALSE;
                 }
-                if(shouldGenerationProcessBeTerminated()){
+                complexity = targetUnary + 2*targetBinary;
+                if(shouldGenerationProcessBeTerminated(complexity)){
                     return;
                 }
             }
@@ -1303,7 +1309,8 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
             for (i=0; i<unaryOperatorCount; i++){
                 currentNode->contentLabel[1] = unaryOperators[i];
                 generateLabeledTree(tree, orderedNodes, pos+1);
-                if(shouldGenerationProcessBeTerminated()){
+                complexity = targetUnary + 2*targetBinary;
+                if(shouldGenerationProcessBeTerminated(complexity)){
                     return;
                 }
             }
@@ -1313,7 +1320,8 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
             for (i=0; i<nonCommBinaryOperatorCount; i++){
                 currentNode->contentLabel[1] = nonCommBinaryOperators[i];
                 generateLabeledTree(tree, orderedNodes, pos+1);
-                if(shouldGenerationProcessBeTerminated()){
+                complexity = targetUnary + 2*targetBinary;
+                if(shouldGenerationProcessBeTerminated(complexity)){
                     return;
                 }
             }
@@ -1324,7 +1332,8 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
                 for (i=0; i<commBinaryOperatorCount; i++){
                     currentNode->contentLabel[1] = commBinaryOperators[i];
                     generateLabeledTree(tree, orderedNodes, pos+1);
-                    if(shouldGenerationProcessBeTerminated()){
+                    complexity = targetUnary + 2*targetBinary;
+                    if(shouldGenerationProcessBeTerminated(complexity)){
                         return;
                     }
                 }
@@ -1337,10 +1346,6 @@ void generateLabeledTree(TREE *tree, NODE **orderedNodes, int pos){
 
 void handleTree(TREE *tree){
     treeCount++;
-    if (treeCount > unlabeled_tree_limit){
-      unlabeledTreeLimitReached = TRUE;
-      return;
-    }
     if(onlyUnlabeled) return;
     
     //start by ordering nodes
@@ -1386,7 +1391,8 @@ void generateTreeImpl(TREE *tree){
         addChildToNodeInTree(tree, parent);
         generateTreeImpl(tree);
         removeChildFromNodeInTree(tree, parent);
-        if(shouldGenerationProcessBeTerminated()){
+        complexity = targetUnary + 2*targetBinary;
+        if(shouldGenerationProcessBeTerminated(complexity)){
             return;
         }
     }
@@ -1396,7 +1402,8 @@ void generateTreeImpl(TREE *tree){
         addChildToNodeInTree(tree, parent);
         generateTreeImpl(tree);
         removeChildFromNodeInTree(tree, parent);
-        if(shouldGenerationProcessBeTerminated()){
+        complexity = targetUnary + 2*targetBinary;
+        if(shouldGenerationProcessBeTerminated(complexity)){
             return;
         }
     }
@@ -1407,9 +1414,7 @@ void generateTree(int unary, int binary){
         fprintf(stderr, "Generating trees with %d unary node%s and %d binary node%s.\n",
                 unary, unary == 1 ? "" : "s", binary, binary == 1 ? "" : "s");
     }
-    if(report_maximum_complexity_reached){//no need to check if this is larger since we generate them in increasing order
-        maximum_complexity_reached = 2*binary + unary;
-    }
+
     TREE tree;
     targetUnary = unary;
     targetBinary = binary;
@@ -1461,7 +1466,8 @@ void conjecture(int startUnary, int startBinary){
     
     generateTree(unary, binary);
     getNextOperatorCount(&unary, &binary);
-    while(!shouldGenerationProcessBeTerminated()) {
+    complexity = unary + 2*binary;
+    while(!shouldGenerationProcessBeTerminated(complexity)) {
         if(unary <= MAX_UNARY_COUNT && 
            binary <= MAX_BINARY_COUNT &&
            availableInvariants >= binary+1)
@@ -2104,7 +2110,7 @@ int processOptions(int argc, char **argv) {
         {"sufficient", no_argument, NULL, 0},
         {"necessary", no_argument, NULL, 0},
         {"maximum-complexity", no_argument, NULL, 0},
-        {"unlabeled-tree-limit", required_argument, NULL, 0},
+        {"complexity-limit", required_argument, NULL, 0},
         {"help", no_argument, NULL, 'h'},
         {"verbose", no_argument, NULL, 'v'},
         {"unlabeled", no_argument, NULL, 'u'},
@@ -2209,7 +2215,7 @@ int processOptions(int argc, char **argv) {
                         report_maximum_complexity_reached = TRUE;
                         break;
                     case 22:
-                        unlabeled_tree_limit = strtoul(optarg, NULL, 10);
+                        complexity_limit = strtoul(optarg, NULL, 10);
                         break;
                     default:
                         fprintf(stderr, "Illegal option index %d.\n", option_index);
@@ -2438,8 +2444,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Generation process was interrupted by user.\n");
     } else if(terminationSignalReceived){
         fprintf(stderr, "Generation process was killed.\n");
-    } else if(unlabeledTreeLimitReached){
-        fprintf(stderr, "Generation process was stopped because the maximum number of unlabeled trees was explored.\n");
+    } else if(complexity_limit_reached){
+        fprintf(stderr, "Generation process was stopped because the maximum omplexity was explored.\n");
     }
     
     //print some statistics
@@ -2456,9 +2462,10 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Found %lu labeled trees.\n", labeledTreeCount);
         fprintf(stderr, "Found %lu valid expressions.\n", validExpressionsCount);
     }
+    fprintf(stderr, "Maximum complexity reached: %lu\n", complexity);
     
     if(report_maximum_complexity_reached){
-        fprintf(stderr, "Maximum complexity reached was %d\n", maximum_complexity_reached);
+        fprintf(stderr, "Maximum complexity reached was %lu\n", complexity);
     }
     
     //do some heuristic-specific post-processing like outputting the conjectures
