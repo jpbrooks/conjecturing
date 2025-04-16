@@ -753,6 +753,7 @@ boolean shouldGenerationProcessBeTerminated(int complexity){
     }
     if (complexity > complexity_limit) {
         complexity_limit_reached = TRUE;
+        complexity = complexity_limit;
         return TRUE;
     }
     
@@ -2445,7 +2446,7 @@ int main(int argc, char *argv[]) {
     } else if(terminationSignalReceived){
         fprintf(stderr, "Generation process was killed.\n");
     } else if(complexity_limit_reached){
-        fprintf(stderr, "Generation process was stopped because the maximum omplexity was explored.\n");
+        fprintf(stderr, "Generation process was stopped because the maximum complexity was explored.\n");
     }
     
     //print some statistics

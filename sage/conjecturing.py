@@ -301,7 +301,7 @@ def allOperators():
 
 def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
                debug=False, verbose=False, upperBound=True, operators=None,
-               theory=None, precomputed=None, skips=0.0):
+               theory=None, precomputed=None, skips=0.0, complexity_limit=11):
     """
     Runs the conjecturing program for invariants with the provided objects,
     invariants and main invariant. This method requires the program ``expressions``
@@ -357,6 +357,8 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
     -  ``verbose`` - if given, this boolean value specifies whether the program
        ``expressions`` is ran in verbose mode. Note that this has nu purpose if
        ``debug`` is not also set to ``True``. The default value is ``False``.
+    - ``complexity_limit'' - the program will terminate if the complexity of 
+      expressions exceeds this value.
 
     EXAMPLES::
 
@@ -486,10 +488,14 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
         names.append(name)
 
     # call the conjecturing program
-    command = './expressions -c{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips ' + str(skips)
-    command = command.format('v' if verbose and debug else '', 't' if theory is not None else '',
+    command = './expressions -c{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}' 
+    command = command.format('v' if verbose and debug else '', 
+                             't' if theory is not None else '',
                              '--all-operators ' if operators is None else '',
-                             time, '--leq' if upperBound else '--geq')
+                             time, 
+                             '--leq' if upperBound else '--geq',
+                             skips,
+                             complexity_limit)
 
     if verbose:
         print('Using the following command')
