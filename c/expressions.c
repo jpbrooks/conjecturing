@@ -266,9 +266,9 @@ void dalmatianHeuristic(TREE *tree, double *values, int skipCount){
     for(i=0; i<objectCount; i++){
         double currentBest = 
         dalmatianCurrentConjectureValues[dalmatianBestConjectureForObject[i]][i];
-        if(handleComparator(currentBest, values[i], inequality)){
+        if(handleComparator(currentBest, values[i], inequality+1)){
             conjectureFrequency[dalmatianBestConjectureForObject[i]]++;
-        } else {
+        } else if (handleComparator(values[i], currentBest, inequality+1) ) {
             if(verbose){
                 fprintf(stderr, "Conjecture is more significant for object %d.\n", i+1);
                 fprintf(stderr, "%11.6lf vs. %11.6lf\n", currentBest, values[i]);
@@ -291,7 +291,7 @@ void dalmatianHeuristic(TREE *tree, double *values, int skipCount){
     int smallestAvailablePosition = 0;
     
     while(smallestAvailablePosition < objectCount &&
-            conjectureFrequency[smallestAvailablePosition]>0){
+            conjectureFrequency[smallestAvailablePosition]>0){  // checking whether an expression is dropped
         smallestAvailablePosition++;
     }
     if(smallestAvailablePosition == objectCount){
@@ -2102,9 +2102,9 @@ int processOptions(int argc, char **argv) {
         {"operators", required_argument, NULL, 0},
         {"invariants", required_argument, NULL, 0},
         {"leq", no_argument, NULL, 0},
-        {"less", no_argument, NULL, 0},
+        {"less", no_argument, NULL, 0}, // don't use this option
         {"geq", no_argument, NULL, 0},
-        {"greater", no_argument, NULL, 0},
+        {"greater", no_argument, NULL, 0}, // don't use this option
         {"limits", required_argument, NULL, 0},
         {"allowed-skips", required_argument, NULL, 0},
         {"print-valid-expressions", no_argument, NULL, 0},
