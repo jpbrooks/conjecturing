@@ -27,6 +27,7 @@ def create_dummies(my_data, categorical_names, nan_is_level=True):
     # missing values.
 
     property_names = []
+    target_property_names = []
     for col in categorical_names:
         if col != "TARGET":
             if nan_is_level:
@@ -41,7 +42,6 @@ def create_dummies(my_data, categorical_names, nan_is_level=True):
     
     
     if "TARGET" in categorical_names:
-        target_property_names = []
         if nan_is_level:
             unique_vals = list(my_data["TARGET"].unique()) # if nan is a level
         else:
@@ -55,7 +55,7 @@ def create_dummies(my_data, categorical_names, nan_is_level=True):
     my_df = pd.get_dummies(my_data, 
                            columns=categorical_names,
                            dtype=np.uint8,
-                           dummy_na=True,  # False is the default.  If False, use dropna() above
+                           dummy_na=nan_is_level,  # False is the default.  If False, use dropna() above
                            drop_first=False) # False is the default
     
     my_df = my_df.rename(lambda col: col.replace('.0', ''), axis='columns')
@@ -87,6 +87,7 @@ def create_example_class(my_df, invariant_names, property_names, categorical_nam
             setattr(Example, prop.__name__, prop)
     else:
         target_invariant = invariant_names.index("TARGET")
+        setattr(Example, "target_invariant", target_invariant)
     return Example
 
 def get_invariants_properties(Example, invariant_names, 
@@ -112,7 +113,8 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                            target_property_names, invariants, 
                            use_operators, complexity, my_time, 
                            my_skips, inv_file, debug=False, 
-                           verbose=False, my_path = "./"):
+                           verbose=False, notebook_path = "./", 
+                           output_path="./"):
 
     inv_conjectures = []
     if "TARGET" in categorical_names:
@@ -134,7 +136,7 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   my_path=my_path)
+                                   notebook_path=notebook_path)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
     
@@ -148,7 +150,7 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   my_path=my_path)
+                                   notebook_path=notebook_path)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
         print("\nnumber of conjectures", len(inv_conjectures))
@@ -171,7 +173,7 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   my_path=my_path
+                                   notebook_path=notebook_path
                                   )
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
@@ -186,11 +188,12 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   my_path=my_path)
+                                   notebook_path=notebook_path)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
     else: # target is an invariant
         my_examples = [example for example in train_examples]
+        target_invariant = Example.target_invariant
         conjs = conjecture(my_examples, 
                            invariants, 
                            target_invariant, 
@@ -201,7 +204,7 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                            debug=debug,
                            verbose=verbose,
                            skips=my_skips,
-                           my_path=my_path)
+                           notebook_path=notebook_path)
         #convert_conjecture_names(conjs)
         inv_conjectures += conjs
         conjs = conjecture(my_examples, 
@@ -214,15 +217,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                            debug=debug,
                            verbose=verbose,
                            skips=my_skips,
-                           my_path=my_path)
-        convert_conjecture_names(conjs)
+                           notebook_path=notebook_path)
         inv_conjectures += conjs     
     print("\nnumber of conjectures", len(inv_conjectures))  
     
     for c in inv_conjectures:
         inv_file.write("%s\n" % c.__name__)
         inv_file.flush()
-    inv_file.close()
 
     return inv_conjectures
 
@@ -230,7 +231,7 @@ def property_conjecturing(Example, properties, inv_conjectures,
                           categorical_names, target_property_names,
                           train_examples, my_time, my_skips, 
                           prop_file, verbose=False, debug=False, 
-                          my_path="./"):
+                          notebook_path="./"):
 
     all_properties = ["TARGET"] + properties + inv_conjectures #"TARGET" is just a placeholder
     prop_conjs = []
@@ -246,7 +247,7 @@ def property_conjecturing(Example, properties, inv_conjectures,
                                                verbose=verbose,
                                                debug=debug,
                                                skips=my_skips,
-                                               my_path=my_path)
+                                               notebook_path=notebook_path)
             conditions[value] = []
             for c in these_prop_conjs: 
                 conditions[value].append(get_premise(c, myprint=False))
@@ -262,7 +263,7 @@ def property_conjecturing(Example, properties, inv_conjectures,
                                                verbose=verbose,
                                                debug=debug,
                                                skips=my_skips,
-                                               my_path=my_path)
+                                               notebook_path=notebook_path)
             conditions["necessary"] = []
             for c in these_prop_conjs:
                 conditions["necessary"].append(get_conclusion(c, myprint=False))
@@ -271,7 +272,6 @@ def property_conjecturing(Example, properties, inv_conjectures,
     for c in prop_conjs:
         prop_file.write("%s\n" % c.__name__)
         prop_file.flush()
-    prop_file.close()
 
     return (prop_conjs, conditions)
 
@@ -657,7 +657,7 @@ def allOperators():
 def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
                debug=False, verbose=False, upperBound=True, operators=None,
                theory=None, precomputed=None, skips=0.0, complexity_limit=11, 
-               my_path='./'):
+               notebook_path='./'):
     """
     Runs the conjecturing program for invariants with the provided objects,
     invariants and main invariant. This method requires the program ``expressions``
@@ -842,7 +842,7 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
         names.append(name)
 
     # call the conjecturing program
-    command = my_path + 'expressions -c{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}' 
+    command = notebook_path + 'expressions -c{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}' 
     command = command.format('v' if verbose and debug else '', 't' if theory is not None else '',
                              '--all-operators ' if operators is None else '',
                              time, 
@@ -1181,7 +1181,7 @@ def allPropertyBasedOperators():
 
 def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=False,
                             verbose=False, sufficient=True, operators=None,
-                            theory=None, precomputed=None, skips=0.0, my_path='./'):
+                            theory=None, precomputed=None, skips=0.0, notebook_path='./'):
     """
     Runs the conjecturing program for properties with the provided objects,
     properties and main property. This method requires the program ``expressions``
@@ -1305,7 +1305,7 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
         names.append(name)
 
     # call the conjecturing program
-    command = my_path + 'expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips ' + str(skips)
+    command = notebook_path + 'expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips ' + str(skips)
     command = command.format('v' if verbose and debug else '', 't' if theory is not None else '',
                              '--all-operators ' if operators is None else '',
                              time, '--sufficient' if sufficient else '--necessary')
