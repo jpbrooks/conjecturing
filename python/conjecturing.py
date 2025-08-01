@@ -628,10 +628,13 @@ def _makeConjecture(inputList, variable, invariantsDict):
 
     sym_vars = symbols((" ").join(sym_list))
     my_expression = expressionStack.pop()
-    sym_expr = sympify(my_expression)
-    my_lambda = lambdify(sym_vars, sym_expr)
-    my_rhs = sym_expr.rhs
-    my_lambda_rhs = lambdify(sym_vars, my_rhs)
+    try: 
+        sym_expr = sympify(my_expression)
+        my_lambda = lambdify(sym_vars, sym_expr)
+        my_rhs = sym_expr.rhs
+        my_lambda_rhs = lambdify(sym_vars, my_rhs)
+    except: 
+        return None
 
     return Conjecture(operatorStack, my_expression, (inputList, variable, invariantsDict), sym_list, my_lambda, my_lambda_rhs)
 
@@ -935,7 +938,9 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
         if op:
             inputList.append(op)
         else:
-            conjectures.append(_makeConjecture(inputList, variable, invariantsDict))
+            this_conjecture = _makeConjecture(inputList, variable, invariantsDict)
+            if this_conjecture is not None:
+                conjectures.append(this_conjecture)
             inputList = []
 
     if verbose:
