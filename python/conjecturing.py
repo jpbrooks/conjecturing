@@ -380,6 +380,22 @@ def evaluate_property_conjectures(categorical_names,
         'f1': f1})
     return results_df
 
+def evaluate_invariant_conjectures(Example, inv_conjectures, 
+                                   test_examples):
+    errors = []
+    expressions = []
+    for c in inv_conjectures:
+        expressions.append(c.expression)
+        try:
+            error = np.mean([abs(example.TARGET() - c.evaluate(example, returnBoundValue=True)) for example in test_examples])
+            errors.append(error)
+        except:
+            errors.append(pd.NA)
+    results_df = pd.DataFrame({
+        'expression': expressions,
+        'MAE': errors})
+    return results_df
+
 # Creates invariant functions.
 # pass the index (row name) and the data frame
 # requires that the init function for the example class looks like:
