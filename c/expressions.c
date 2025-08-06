@@ -15,6 +15,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <float.h>
+#include <time.h>
 #include <limits.h>
 //#include <malloc.h>
 
@@ -2337,6 +2338,10 @@ int processOptions(int argc, char **argv) {
 
 int main(int argc, char *argv[]) {
     
+    time_t start, end;
+
+    start = time(NULL);
+
     operatorFile = stdin;
     invariantsFile = stdin;
     
@@ -2463,16 +2468,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Found %lu labeled trees.\n", labeledTreeCount);
         fprintf(stderr, "Found %lu valid expressions.\n", validExpressionsCount);
     }
-    fprintf(stderr, "Maximum complexity reached: %lu\n", complexity);
-    
-    if(report_maximum_complexity_reached){
-        fprintf(stderr, "Maximum complexity reached was %lu\n", complexity);
-    }
+    fprintf(stderr, "Maximum complexity reached: %lu\n", complexity-1);
     
     //do some heuristic-specific post-processing like outputting the conjectures
     if(heuristicPostProcessing!=NULL){
         heuristicPostProcessing();
     }
+    end = time(NULL);
+    fprintf(stderr, "Elapsed time: %ld seconds\n", end - start);
     
     return 0;
 }
