@@ -1,5 +1,5 @@
 import sys
-sys.path.append(".") # Needed to pass Sage's automated testing
+sys.path.append(".") 
 
 import numpy as np
 from sympy import *
@@ -998,16 +998,21 @@ class PropertyBasedConjecture():
         for op in self.inputList:
             if op in self.propertiesDict:
                 prop = ''.join([l for l in op if l.strip()])
-                if self.propertyCalculators[prop](g):
-                    expressionStack.append("true")
-                else:
-                    expressionStack.append("false")
+                expressionStack.append("true" if self.propertyCalculators[prop](g) else "false")
             elif op == '<-':
                 right = expressionStack.pop()
                 left = expressionStack.pop()
-                expressionStack.append('({})->({})'.format(right, left))
+                expressionStack.append('({})>>({})'.format(right, left))
+            elif op == '->':
+                right = expressionStack.pop()
+                left = expressionStack.pop()
+                expressionStack.append('({})>>({})'.format(left, right))
             elif op == '~':
                 expressionStack.append('~({})'.format(expressionStack.pop()))
+            elif op == '^':
+                right = expressionStack.pop()
+                left = expressionStack.pop()
+                expressionStack.append('Xor({},{})'.format(left, right))
             elif op in binaryOperators:
                 right = expressionStack.pop()
                 left = expressionStack.pop()
@@ -1016,8 +1021,7 @@ class PropertyBasedConjecture():
                 raise ValueError("Error while reading output from expressions. Unknown element: {}".format(op))
 
         my_expression = expressionStack.pop()
-        my_expression = my_expression.replace("->", ">>")
-        sym_expr = sympify(my_expression)
+        sym_expr = sympify(my_expression, locals={"Xor": Xor})
         my_value = sym_expr.simplify()
         return my_value
 
@@ -1051,26 +1055,31 @@ class PropertyBasedExpression():
         for op in self.inputList:
             if op in self.propertiesDict:
                 prop = ''.join([l for l in op if l.strip()])
-                if self.propertyCalculators[prop](g):
-                    expressionStack.append("true")
-                else:
-                    expressionStack.append("false")
+                expressionStack.append("true" if self.propertyCalculators[prop](g) else "false")
             elif op == '<-':
                 right = expressionStack.pop()
                 left = expressionStack.pop()
-                expressionStack.append('({})->({})'.format(right, left))
+                expressionStack.append('({})>>({})'.format(right, left))
+            elif op == '->':
+                right = expressionStack.pop()
+                left = expressionStack.pop()
+                expressionStack.append('({})>>({})'.format(left, right))
             elif op == '~':
                 expressionStack.append('~({})'.format(expressionStack.pop()))
+            elif op == '^':
+                right = expressionStack.pop()
+                left = expressionStack.pop()
+                expressionStack.append('Xor({},{})'.format(left, right))
             elif op in binaryOperators:
                 right = expressionStack.pop()
                 left = expressionStack.pop()
                 expressionStack.append('({}){}({})'.format(left, op, right))
+
             else:
                 raise ValueError("Error while reading output from expressions. Unknown element: {}".format(op))
 
         my_expression = expressionStack.pop()
-        my_expression = my_expression.replace("->", ">>")
-        sym_expr = sympify(my_expression)
+        sym_expr = sympify(my_expression, locals={"Xor": Xor})
         my_value = sym_expr.simplify()
         return my_value
 
