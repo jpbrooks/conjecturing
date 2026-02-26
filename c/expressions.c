@@ -745,7 +745,7 @@ void grinvinHeuristicPostProcessing(){
 
 
 
-/* ===================== SAM heuristic (dynamic top-k, beta, lambda) ===================== */
+/* ===================== SAM heuristic (dynamic top-k, alpha, beta, lambda) ===================== */
 
 typedef struct samConjecture {
     TREE   *tree;     // deep copy we own
@@ -754,7 +754,8 @@ typedef struct samConjecture {
 } samConjecture;
 
 /* Globals with defaults (you can wire CLI options later) */
-static int    sam_top_k  = 9;      /* --sam-top-k <int> */
+static int    sam_top_k  = 11;      /* --sam-top-k <int> */
+static double sam_alpha = 1;    /* --sam-alpha <double> */
 static double sam_lambda = 0.2;    /* --sam-lambda <double> */
 static double sam_beta   = 0.05;   /* --sam-beta <double> */
 
@@ -910,7 +911,22 @@ void samHeuristic(TREE *tree, double *values, int skipCount){
     double avgTightness = (n_feasible ? sumTight / (double)n_feasible : 0.0);
 
     double complexityPenalty = (double)(targetUnary + 2 * targetBinary);
-    double score = avgViolation + sam_beta * avgTightness + sam_lambda * complexityPenalty;
+    
+    double V = avgViolation; // (1.0 + avgViolation)
+    double T = avgTightness; // (1.0 + avgTightness)
+   // double Cmax = (double)complexity_limit;              // known constant
+    double C = complexityPenalty; // (Cmax + 1e-12)    // in [0,1]
+    //if (C > 1.0) C = 1.0                              // safety clamp
+
+    double score = sam_alpha * V + sam_beta * T + sam_lambda * C;
+    
+
+    /* Reject non-finite scores (NaN or Inf) */
+    if (!isfinite(score)) {
+        return;
+    }
+
+
 
     samInsertCandidate(tree, score);
 }
@@ -927,9 +943,7 @@ void samHeuristic(TREE *tree, double *values, int skipCount){
 /* Suggestion: add a small KEEP penalty when KEEP does not produce a SWAP      */
 /* ========================================================================== */
 
-#ifndef RL_EPISODES
-#define RL_EPISODES 4
-#endif
+static int RL_EPISODES = 4;   /* default */
 
 #ifndef RL_MAX_TOP_K
 #define RL_MAX_TOP_K 10000
@@ -961,7 +975,7 @@ static double rl_rho_redund     = 0.05;
 static double rl_lr             = 0.05;
 static double rl_gamma          = 0.95;
 static double rl_baseline_alpha = 0.05;
-static int    rl_top_k          = 9;
+static int    rl_top_k          = 10;
 static unsigned rl_seed         = 0;
 static int rl_debug __attribute__((unused)) = 0;
 char rl_sim_name[256];
@@ -1036,60 +1050,99 @@ static rlPoolEntry rlPool[RL_MAX_TOP_K];
 static int rlPoolCount = 0;
 
 /* ------------------------------- Utils ---------------------------------- */
-static inline int is_finite(double x){ return isfinite(x); }
+
+/* Returns nonzero if x is finite (i.e., not NaN or ±Inf). */
+static inline int is_finite(double x){
+    return isfinite(x);
+}
+
+/* Clamps x to the closed interval [lo, hi]. */
 static inline double clamp(double x, double lo, double hi){
     return x < lo ? lo : (x > hi ? hi : x);
 }
+
+/* Numerically stable sigmoid function with input clipping. */
 static inline double rlSigmoidSafe(double z){
     if (!isfinite(z)) return 0.5;
     z = clamp(z, -30.0, 30.0);
     return 1.0/(1.0+exp(-z));
 }
+
+/* Returns a uniform random number in [0,1]. */
 static inline double rlRand01(void){
     return (double)rand()/(double)RAND_MAX;
 }
+
+/* Computes the dot product of two length-n vectors. */
 static inline double rlDot(const double *a, const double *b, int n){
-    double s = 0.0; for(int i=0;i<n;i++) s += a[i]*b[i]; return s;
+    double s = 0.0;
+    for(int i=0;i<n;i++) s += a[i]*b[i];
+    return s;
 }
+
+/* Frees memory associated with a pool entry and resets its state. */
 static void rlFreeExpr(rlPoolEntry *e){
-    if (e->tree){ freeTree(e->tree); free(e->tree); e->tree=NULL; }
-    if (e->invBits){ free(e->invBits); e->invBits=NULL; }
-    e->in_use=0;
+    if (e->tree){
+        freeTree(e->tree);
+        free(e->tree);
+        e->tree = NULL;
+    }
+    if (e->invBits){
+        free(e->invBits);
+        e->invBits = NULL;
+    }
+    e->in_use = 0;
 }
+
+/* Computes violation magnitude for a predicted bound under the given inequality. */
 static inline double rlViolation(double actual, double pred, int ineq){
     switch(ineq){
-        case LEQ:     return fmax(actual - pred, 0.0);
-        case LESS:    return fmax(actual - pred, 0.0);
-        case GEQ:     return fmax(pred   - actual, 0.0);
-        case GREATER: return fmax(pred   - actual, 0.0);
-        default: return 0.0;
+        case LEQ:
+        case LESS:
+            return fmax(actual - pred, 0.0);
+        case GEQ:
+        case GREATER:
+            return fmax(pred - actual, 0.0);
+        default:
+            return 0.0;
     }
 }
 
-/* Invariant bits */
+/* -------------------------- Invariant bit utilities -------------------------- */
+
+/* Recursively marks invariants used in a tree by setting corresponding bits. */
 static void rlMarkInvsRec(NODE *node, unsigned char *bits){
     if (!node) return;
-    if (node->contentLabel[0]==INVARIANT_LABEL) {
+
+    if (node->contentLabel[0] == INVARIANT_LABEL) {
         int idx = node->contentLabel[1];
-        if (0 <= idx && idx < invariantCount) bits[idx] = 1;
+        if (0 <= idx && idx < invariantCount)
+            bits[idx] = 1;
     }
+
     rlMarkInvsRec(node->left, bits);
     rlMarkInvsRec(node->right, bits);
 }
+
+/* Builds the invariant bitset representation for a tree. */
 static void rlBuildInvBitsForTree(TREE *tree, unsigned char *bits){
     memset(bits, 0, (size_t)invariantCount);
     rlMarkInvsRec(tree->root, bits);
 }
+
+/* Computes the Jaccard similarity between two invariant bitsets. */
 static double rlJaccard(const unsigned char *a, const unsigned char *b){
-    int inter=0, uni=0;
+    int inter = 0, uni = 0;
+
     for(int i=0;i<invariantCount;i++){
-        int aa=a[i]!=0, bb=b[i]!=0;
+        int aa = a[i] != 0;
+        int bb = b[i] != 0;
         inter += (aa && bb);
         uni   += (aa || bb);
     }
-    return (uni==0) ? 0.0 : ((double)inter / (double)uni);
-}
 
+    return (uni == 0) ? 0.0 : ((double)inter / (double)uni);
+}
 
 /* -------------------------- Metrics & Aggregates ------------------------ */
 static rlCandMetrics rlComputeCandMetrics(double *values){
@@ -2947,6 +3000,7 @@ int processOptions(int argc, char **argv) {
         {"sim", required_argument, NULL, 0},
         {"seed", required_argument, NULL, 0},
         {"rho", required_argument, NULL, 0},
+        {"episodes", required_argument, NULL, 0},
         {"help", no_argument, NULL, 'h'},
         {"verbose", no_argument, NULL, 'v'},
         {"unlabeled", no_argument, NULL, 'u'},
@@ -2956,7 +3010,7 @@ int processOptions(int argc, char **argv) {
         {"conjecture", no_argument, NULL, 'c'},
         {"output", required_argument, NULL, 'o'},
         {"property", no_argument, NULL, 'p'},
-        {"theory", no_argument, NULL, 't'},
+        {"theory", no_argument, NULL, 't'}
     };
     int option_index = 0;
 
@@ -3069,6 +3123,7 @@ int processOptions(int argc, char **argv) {
                         rl_top_k = strtol(optarg, NULL, 10);
                         if (rl_top_k < 1) rl_top_k = 1;
                         if (rl_top_k > RL_MAX_TOP_K) rl_top_k = RL_MAX_TOP_K;
+                        sam_top_k = rl_top_k;
                         break;
                     case 26:
                         sam_beta = strtod(optarg, NULL);
@@ -3080,6 +3135,7 @@ int processOptions(int argc, char **argv) {
                         break;
                     case 28:
                         rl_alpha_viol = strtod(optarg, NULL);
+                        sam_alpha = rl_alpha_viol;
                         break;
                     case 29:
                         rl_gamma = strtod(optarg, NULL);
@@ -3100,6 +3156,13 @@ int processOptions(int argc, char **argv) {
                     case 34:
                         rl_rho_redund= strtod(optarg, NULL);
                         break;
+                    case 35: /* --episodes */
+                    RL_EPISODES = strtol(optarg, NULL, 10);
+                    if (RL_EPISODES <= 0) {
+                        fprintf(stderr, "--episodes must be positive\n");
+                        exit(EXIT_FAILURE);
+                    }
+                    break;
                     default:
                         fprintf(stderr, "Illegal option index %d.\n", option_index);
                         usage(name);
@@ -3360,9 +3423,9 @@ int main(int argc, char *argv[]) {
         } else {
     
             /* non-RL original single run */
+            timeOutReached = FALSE; /* Reset timeout flags */
+            if (timeOut) alarm((unsigned int)timeOut);   /* Arm timeout once for entire run */
             if (heuristicInit) heuristicInit();
-            if (timeOut) alarm((unsigned int)timeOut);
-    
             conjecture(unary, binary);
     
             if (timeOut) alarm(0);
@@ -3405,13 +3468,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Found %lu valid expressions.\n", validExpressionsCount);
     }
     fprintf(stderr, "Maximum complexity reached: %lu\n", complexity-1);
-    
-    //do some heuristic-specific post-processing like outputting the conjectures
-       /* If RL episodic loop ran, postProcessing already executed inside the loop */
-    if (!(doConjecturing && selectedHeuristic == RL_HEURISTIC)) {
-        if (heuristicPostProcessing) heuristicPostProcessing();
-    }
-
     end = time(NULL);
     fprintf(stderr, "Elapsed time: %ld seconds\n", end - start);
     
