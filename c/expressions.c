@@ -161,7 +161,6 @@ boolean closeInvariantsFile = FALSE;
 #define SAM_HEURISTIC 2
 #define RL_HEURISTIC  3 
 
-
 int selectedHeuristic = NO_HEURISTIC;
 
 boolean (*heuristicStopConditionReached)() = NULL;
@@ -743,8 +742,6 @@ void grinvinHeuristicPostProcessing(){
     freeTree(&grinvinBestExpression);
 }
 
-
-
 /* ===================== SAM heuristic (dynamic top-k, alpha, beta, lambda) ===================== */
 
 typedef struct samConjecture {
@@ -920,20 +917,14 @@ void samHeuristic(TREE *tree, double *values, int skipCount){
 
     double score = sam_alpha * V + sam_beta * T + sam_lambda * C;
     
-
     /* Reject non-finite scores (NaN or Inf) */
     if (!isfinite(score)) {
         return;
     }
-
-
-
     samInsertCandidate(tree, score);
 }
 
 /* ===================== SAM heuristic (ends) ===================== */
-
-
 
 /* ========================================================================== */
 /* Reinforcement Learning (REINFORCE) Heuristic                               */
@@ -1575,13 +1566,6 @@ static void rlHeuristicPostProcessing(void){
 #endif
 
 /* --------------------------------- END RL --------------------------------- */
-
-
-
-
-
-
-
 //------ Stop generation -------
 
 boolean shouldGenerationProcessBeTerminated(int complexity){
@@ -1742,8 +1726,6 @@ void handleExpression(TREE *tree, double *values, int calculatedValues, int hitC
             break;
     }
 }
-
-
 
 void handleExpression_propertyBased(TREE *tree, boolean *values, int calculatedValues, int hitCount, int skipCount){
     validExpressionsCount++;
@@ -2072,7 +2054,6 @@ boolean evaluateTree_propertyBased(TREE *tree, boolean *values, int *calculatedV
     }
     return TRUE;
 }
-
 
 void checkExpression(TREE *tree){
     double values[objectCount];
@@ -2571,7 +2552,6 @@ void readInvariantsValues(){
             }
         }
     }
-
     /* === NEW: compute RL normalization constants === */
     rlComputeTargetMinMax();
 }
@@ -3431,15 +3411,11 @@ int main(int argc, char *argv[]) {
             if (timeOut) alarm(0);
             if (heuristicPostProcessing) heuristicPostProcessing();
         }
-    
-    } else {
-    
+    } else {    
         /* not conjecturing: original behavior */
         generateTree(unary, binary);
     }
 
-
-    
     //give information about the reason why the program halted
     if(heuristicStoppedGeneration){
         fprintf(stderr, "Generation process was stopped by the conjecturing heuristic.\n");
@@ -3473,4 +3449,3 @@ int main(int argc, char *argv[]) {
     
     return 0;
 }
-
