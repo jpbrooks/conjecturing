@@ -114,10 +114,11 @@ def get_invariants_properties(Example, invariant_names,
 
 def invariant_conjecturing(Example, train_examples, categorical_names, 
                            target_property_names, invariants, 
-                           use_operators, complexity, my_time, 
+                           use_operators, my_complexity, my_time, 
                            my_skips, inv_file, debug=False, 
                            verbose=False, notebook_path = "./", 
-                           output_path="./"):
+                           output_path="./", heuristic='dalmatian',
+                           params=None):
 
     inv_conjectures = []
     if "TARGET" in categorical_names:
@@ -135,11 +136,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    operators=use_operators, 
                                    upperBound=True, 
                                    time=my_time,
-                                   complexity_limit=complexity,
+                                   complexity_limit=my_complexity,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   notebook_path=notebook_path)
+                                   notebook_path=notebook_path,
+                                   heuristic=heuristic,
+                                   params=params)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
     
@@ -149,11 +152,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    operators=use_operators, 
                                    upperBound=False, 
                                    time=my_time,
-                                   complexity_limit=complexity,
+                                   complexity_limit=my_complexity,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   notebook_path=notebook_path)
+                                   notebook_path=notebook_path,
+                                   heuristic=heuristic,
+                                   params=params)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
         print("\nnumber of conjectures", len(inv_conjectures))
@@ -172,12 +177,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    operators=use_operators, 
                                    upperBound=True, 
                                    time=my_time,
-                                   complexity_limit=complexity,
+                                   complexity_limit=my_complexity,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   notebook_path=notebook_path
-                                  )
+                                   notebook_path=notebook_path,
+                                   heuristic=heuristic,
+                                   params=params)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
     
@@ -187,11 +193,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                                    operators=use_operators, 
                                    upperBound=False, 
                                    time=my_time,
-                                   complexity_limit=complexity,
+                                   complexity_limit=my_complexity,
                                    debug=debug,
                                    verbose=verbose,
                                    skips=my_skips,
-                                   notebook_path=notebook_path)
+                                   notebook_path=notebook_path,
+                                   heuristic=heuristic,
+                                   params=params)
                 #convert_conjecture_names(conjs)
                 inv_conjectures += conjs
     else: # target is an invariant
@@ -203,11 +211,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                            operators=use_operators, 
                            upperBound=True, 
                            time=my_time,
-                           complexity_limit=complexity,
+                           complexity_limit=my_complexity,
                            debug=debug,
                            verbose=verbose,
                            skips=my_skips,
-                           notebook_path=notebook_path)
+                           notebook_path=notebook_path,
+                           heuristic=heuristic,
+                           params=params)
         #convert_conjecture_names(conjs)
         inv_conjectures += conjs
         conjs = conjecture(my_examples, 
@@ -216,11 +226,13 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
                            operators=use_operators,
                            upperBound=False, 
                            time=my_time,
-                           complexity_limit=complexity,
+                           complexity_limit=my_complexity,
                            debug=debug,
                            verbose=verbose,
                            skips=my_skips,
-                           notebook_path=notebook_path)
+                           notebook_path=notebook_path,
+                           heuristic=heuristic,
+                           params=params)
         inv_conjectures += conjs     
     print("\nnumber of conjectures", len(inv_conjectures))  
     
@@ -232,7 +244,7 @@ def invariant_conjecturing(Example, train_examples, categorical_names,
 
 def property_conjecturing(Example, properties, inv_conjectures, 
                           categorical_names, target_property_names,
-                          train_examples, my_time, my_skips, 
+                          train_examples, my_complexity, my_time, my_skips, 
                           prop_file, verbose=False, debug=False, 
                           notebook_path="./"):
 
@@ -246,6 +258,7 @@ def property_conjecturing(Example, properties, inv_conjectures,
             these_prop_conjs = propertyBasedConjecture(objects=train_examples, 
                                                properties = all_properties,
                                                mainProperty=0,
+                                               complexity_limit=my_complexity,
                                                time=my_time,
                                                verbose=verbose,
                                                debug=debug,
@@ -262,6 +275,7 @@ def property_conjecturing(Example, properties, inv_conjectures,
                                                properties = all_properties,
                                                mainProperty=0,
                                                sufficient=False,
+                                               complexity_limit=my_complexity,
                                                time=my_time,
                                                verbose=verbose,
                                                debug=debug,
@@ -609,16 +623,20 @@ def _makeConjecture(inputList, variable, invariantsDict):
         if op in invariantsDict:
             expressionStack.append(op)
             sym_list.append(op)
+            operatorStack.append((op, 0))
         elif op in pre_specials:
             if op == '-()':
                 op = "-"
             expressionStack.append("(" + op + "(" + expressionStack.pop() + "))")
+            operatorStack.append((op, 1))
         elif op in post_specials:
             expressionStack.append("((" + expressionStack.pop() + ")" + op + ")")
+            operatorStack.append((op, 1))
         elif op in two_specials:
             right = expressionStack.pop()
             left = expressionStack.pop()
             expressionStack.append(op+"("+left + "," + right + ")")
+            operatorStack.append((op, 2))
         elif op in unaryOperators:
             new_exp = expressionStack.pop()
             if op == 'log10':
@@ -627,21 +645,20 @@ def _makeConjecture(inputList, variable, invariantsDict):
                 new_exp = 'ceiling(' + new_exp + ')'
             elif op == 'abs':
                 new_exp = 'Abs(' + new_exp + ')'
-            elif op == 'min':
-                new_exp = 'Min(' + new_exp + ')'
-            elif op == 'max':
-                new_exp = 'Max(' + new_exp + ')'
             else:
                 new_exp = op + '('+new_exp+')'
             expressionStack.append(new_exp)
+            operatorStack.append((op, 1))
         elif op in binaryOperators:
             right = expressionStack.pop()
             left = expressionStack.pop()
             expressionStack.append("("+ left + op + right + ")")
+            operatorStack.append((op, 2))
         elif op in comparators:
             right = expressionStack.pop()
             left = expressionStack.pop()
             expressionStack.append(left + op + right)
+            operatorStack.append((op, 2))
         else:
             raise ValueError("Error while reading output from expressions. Unknown element: {}".format(op))
 
@@ -679,7 +696,7 @@ def allOperators():
 def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
                debug=False, verbose=False, upperBound=True, operators=None,
                theory=None, precomputed=None, skips=0.0, complexity_limit=11, 
-               notebook_path='./'):
+               notebook_path='./', heuristic='dalmatian', params=None):
     """
     Runs the conjecturing program for invariants with the provided objects,
     invariants and main invariant. This method requires the program ``expressions``
@@ -720,6 +737,9 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
        ``precomputed`` is not a tuple, it is assumed to be a dictionary, and the
        same procedure as above is used, but the identity is used for both key
        functions.
+    - ``skips`` - 
+    - ``complexity_limit`` - maximum complexity of expressions explored.  
+      2xbinary + unary operators.
     -  ``operators`` - if given, specifies a set of operators that can be used.
        If this is ``None``, then all known operators are used. Otherwise only
        the specified operators are used. It is advised to use the method
@@ -1246,7 +1266,8 @@ def allPropertyBasedOperators():
 
 def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=False,
                             verbose=False, sufficient=True, operators=None,
-                            theory=None, precomputed=None, skips=0.0, notebook_path='./'):
+                            theory=None, precomputed=None, skips=0.0, 
+                            complexity_limit=11,notebook_path='./'):
     """
     Runs the conjecturing program for properties with the provided objects,
     properties and main property. This method requires the program ``expressions``
@@ -1261,29 +1282,29 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
     -  ``mainProperty`` - an integer that is the index of one of the elements
        of properties. All conjectures will then be a bound for the property that
        corresponds to this index.
-    -  ``sufficient`` - if given, this boolean value specifies whether sufficient
-       or necessary conditions for the main property should be generated. If
-       ``True``, then sufficient conditions are generated. If ``False``, then
-       necessary conditions are generated. The default value is ``True``
     -  ``time`` - if given, this integer specifies the number of seconds before
        the conjecturing program times out and returns the best conjectures it
        has at that point. The default value is 5.
-    -  ``theory`` - if given, specifies a list of known bounds. If this is
-       ``None``, then no known bounds are used. Otherwise each conjecture will
-       have to be more significant than the conditions in this list. The default
-       value is ``None``.
-    -  ``operators`` - if given, specifies a set of operators that can be used.
-       If this is ``None``, then all known operators are used. Otherwise only
-       the specified operators are used. It is advised to use the method
-       ``allPropertyBasedOperators()`` to get a set containing all operators and
-       then removing the operators which are not needed. The default value is
-       ``None``.
     -  ``debug`` - if given, this boolean value specifies whether the output of
        the program ``expressions`` to ``stderr`` is printed. The default value
        is ``False``.
     -  ``verbose`` - if given, this boolean value specifies whether the program
        ``expressions`` is ran in verbose mode. Note that this has nu purpose if
        ``debug`` is not also set to ``True``. The default value is ``False``.
+    -  ``sufficient`` - if given, this boolean value specifies whether sufficient
+       or necessary conditions for the main property should be generated. If
+       ``True``, then sufficient conditions are generated. If ``False``, then
+       necessary conditions are generated. The default value is ``True``
+    -  ``operators`` - if given, specifies a set of operators that can be used.
+       If this is ``None``, then all known operators are used. Otherwise only
+       the specified operators are used. It is advised to use the method
+       ``allPropertyBasedOperators()`` to get a set containing all operators and
+       then removing the operators which are not needed. The default value is
+       ``None``.
+    -  ``theory`` - if given, specifies a list of known bounds. If this is
+       ``None``, then no known bounds are used. Otherwise each conjecture will
+       have to be more significant than the conditions in this list. The default
+       value is ``None``.
 
     EXAMPLES::
 
@@ -1370,10 +1391,12 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
         names.append(name)
 
     # call the conjecturing program
-    command = notebook_path + 'expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips ' + str(skips)
+    command = notebook_path + 'expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}'
     command = command.format('v' if verbose and debug else '', 't' if theory is not None else '',
                              '--all-operators ' if operators is None else '',
-                             time, '--sufficient' if sufficient else '--necessary')
+                             time, '--sufficient' if sufficient else '--necessary',
+                             skips,
+                             complexity_limit)
 
     if verbose:
         print('Using the following command')

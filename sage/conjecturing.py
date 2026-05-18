@@ -921,10 +921,12 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
         names.append(name)
 
     # call the conjecturing program
-    command = './expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips ' + str(skips)
+    command = notebook_path + 'expressions -pc{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}'
     command = command.format('v' if verbose and debug else '', 't' if theory is not None else '',
                              '--all-operators ' if operators is None else '',
-                             time, '--sufficient' if sufficient else '--necessary')
+                             time, '--sufficient' if sufficient else '--necessary',
+                             skips,
+                             complexity_limit)
 
     if verbose:
         print('Using the following command')
@@ -956,7 +958,12 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
                 if p_key in precomputed[o_key]:
                     precomputed_value = precomputed[o_key][p_key]
         if precomputed_value is None:
-            return prop(o)
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                my_value = prop(o)
+                if w:
+                    return float("NaN")
+                return my_value 
         else:
             return precomputed_value
 
@@ -1015,8 +1022,6 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
         print("Finished conjecturing")
 
     return conjectures
-
-
 
 # ------------------------------------------------------------------
 # Optimization-based selection of Dalmatian expressions
