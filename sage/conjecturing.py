@@ -3,6 +3,11 @@ sys.path.append(".") # Needed to pass Sage's automated testing
 
 from sage.all import *
 
+import pulp    #for ip for dalmatian optimal subsetting 
+import math
+import re
+from itertools import combinations
+
 # this function creates invariant functions
 # pass the index (row name) and the data frame
 # requires that the init function for the example class looks like:
@@ -301,7 +306,7 @@ def allOperators():
 
 def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
                debug=False, verbose=False, upperBound=True, operators=None,
-               theory=None, precomputed=None, skips=0.0, complexity_limit=11):
+               theory=None, precomputed=None, skips=0.0, complexity_limit=11, heuristic="dalmatian", params=None ):
     """
     Runs the conjecturing program for invariants with the provided objects,
     invariants and main invariant. This method requires the program ``expressions``
@@ -488,14 +493,46 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
         names.append(name)
 
     # call the conjecturing program
-    command = './expressions -c{}{} --dalmatian {} --time {} --invariant-names --output stack {} --allowed-skips {} --maximum-complexity --complexity-limit {}' 
-    command = command.format('v' if verbose and debug else '', 
-                             't' if theory is not None else '',
-                             '--all-operators ' if operators is None else '',
-                             time, 
-                             '--leq' if upperBound else '--geq',
-                             skips,
-                             complexity_limit)
+    VALID_HEURISTICS = {
+        "dalmatian": "--dalmatian",
+        "sam": "--sam",
+        "rl": "--rl"
+    }
+    
+    try:
+        heuristic_flag = VALID_HEURISTICS[heuristic.lower()]
+    except KeyError:
+        raise ValueError(f"Unknown heuristic: {heuristic}")
+        
+    param_flags = ""
+
+    if params:
+        for key, value in params.items():
+            if value is None:
+                continue
+    
+            # Convert Python-style names to CLI-style
+            cli_key = key.replace("_", "-")
+    
+            param_flags += f" --{cli_key} {value}"
+
+
+    command = (
+    './expressions -c{}{} {} {} --time {} '
+    '--invariant-names --output stack {} '
+    '--allowed-skips {} --maximum-complexity '
+    '--complexity-limit {}{}'
+    ).format(
+        'v' if verbose and debug else '',
+        't' if theory is not None else '',
+        heuristic_flag,
+        '--all-operators ' if operators is None else '',
+        time,
+        '--leq' if upperBound else '--geq',
+        skips,
+        complexity_limit,
+        param_flags
+    )
 
     if verbose:
         print('Using the following command')
@@ -978,3 +1015,173 @@ def propertyBasedConjecture(objects, properties, mainProperty, time=5, debug=Fal
         print("Finished conjecturing")
 
     return conjectures
+
+
+
+# ------------------------------------------------------------------
+# Optimization-based selection of Dalmatian expressions
+# ------------------------------------------------------------------
+
+def invariants_used(conj):
+    import re
+    return set(re.findall(r"[A-Za-z_]\w*\(x\)", str(conj)))
+
+
+def jaccard(A, B):
+    A = set(A)
+    B = set(B)
+    if len(A | B) == 0:
+        return 0.0
+    return float(len(A & B)) / float(len(A | B))
+
+
+def conjecture_complexity(conj):
+    """
+    Complexity = number of unary operators + 2 * number of binary operators.
+    The final comparator <= or >= is stored as binary, so it is subtracted.
+    """
+    unary = 0
+    binary = 0
+
+    for op, opType in conj.stack:
+        if opType == 1:
+            unary += 1
+        elif opType == 2:
+            binary += 1
+
+    binary = max(0, binary - 1)
+
+    return unary + 2 * binary
+
+
+def optimize_dalmatian_set(conjs, test_examples, invariants, target_invariant,
+                           k=5, alpha=1.0, beta=1.0,
+                           lam=0.1, rho=0.1,
+                           upper_bound=True,
+                           verbose=True):
+
+    target_function = invariants[target_invariant]
+
+    print("Running Dalmatian IP selection...")
+    print("Number of Dalmatian candidates:", len(conjs))
+    print("Number of holdout/test examples:", len(test_examples))
+
+    n = len(conjs)
+
+    if n == 0:
+        raise ValueError("No Dalmatian conjectures were provided.")
+
+    if int(k) > n:
+        raise ValueError("k cannot exceed the number of candidate conjectures.")
+
+    V, T, C = [], [], []
+
+    for c in conjs:
+        violations = []
+        tightness = []
+
+        for ex in test_examples:
+            true_val = float(target_function(ex))
+
+            try:
+                pred = float(c(ex, returnBoundValue=True))
+            except Exception:
+                pred = float("nan")
+
+            if not math.isfinite(pred):
+                violations.append(1e6)
+                tightness.append(1e6)
+                continue
+
+            if upper_bound:
+                violation = max(0.0, true_val - pred)
+            else:
+                violation = max(0.0, pred - true_val)
+
+            violations.append(violation)
+            tightness.append(abs(pred - true_val))
+
+        V.append(sum(violations) / float(len(violations)))
+        T.append(sum(tightness) / float(len(tightness)))
+        C.append(conjecture_complexity(c))
+
+    cost = {
+        i: float(alpha) * V[i] + float(beta) * T[i] + float(lam) * C[i]
+        for i in range(n)
+    }
+
+    R = {}
+    for i, j in combinations(range(n), 2):
+        R[(i, j)] = jaccard(invariants_used(conjs[i]),
+                             invariants_used(conjs[j]))
+
+    model = pulp.LpProblem("Dalmatian_Optimal_Set_Selection", pulp.LpMinimize)
+
+    x = {
+        i: pulp.LpVariable("x_{}".format(i), cat="Binary")
+        for i in range(n)
+    }
+
+    y = {
+        (i, j): pulp.LpVariable("y_{}_{}".format(i, j), cat="Binary")
+        for i, j in combinations(range(n), 2)
+    }
+
+    model += (
+        pulp.lpSum(cost[i] * x[i] for i in range(n))
+        +
+        float(rho) * pulp.lpSum(R[(i, j)] * y[(i, j)] for i, j in y)
+    )
+
+    model += pulp.lpSum(x[i] for i in range(n)) == int(k)
+
+    for i, j in y:
+        model += y[(i, j)] <= x[i]
+        model += y[(i, j)] <= x[j]
+        model += y[(i, j)] >= x[i] + x[j] - 1
+
+    model.solve(pulp.PULP_CBC_CMD(msg=False))
+
+    selected_idx = [
+        i for i in range(n)
+        if pulp.value(x[i]) is not None and pulp.value(x[i]) > 0.5
+    ]
+
+
+    if verbose:
+
+        print("\nSelected indices:", selected_idx)
+        print("Objective:", pulp.value(model.objective))
+    
+        print("\nSelected expressions:")
+    
+        for i in selected_idx:
+    
+            print("\nIndex:", i)
+            print(conjs[i])
+    
+            print("Holdout violation:", V[i])
+            print("Holdout tightness:", T[i])
+            print("Complexity:", C[i])
+            print("Individual cost:", cost[i])
+    
+        print("\nPairwise Jaccard similarities:")
+    
+        for i, j in combinations(selected_idx, 2):
+            print(
+                "({}, {}) -> {}".format(
+                    i,
+                    j,
+                    R[(i, j)]
+                )
+        )
+    return {
+        "selected_idx": selected_idx,
+        "selected_conjectures": [conjs[i] for i in selected_idx],
+        "objective": pulp.value(model.objective),
+        "V": V,
+        "T": T,
+        "C": C,
+        "cost": cost,
+        "redundancy": R
+    }
