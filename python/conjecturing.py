@@ -908,10 +908,12 @@ def conjecture(objects, invariants, mainInvariant, variableName='x', time=5,
             param_flags += f" --{cli_key} {value}"
 
     # call the conjecturing program
-    command = notebook_path + 'expressions -c{}{} {} {} --time {} '
-    '--invariant-names --output stack {} '
-    '--allowed-skips {} --maximum-complexity '
-    '--complexity-limit {}{}' 
+    command = (
+            notebook_path + 'expressions -c{}{} {} {} --time {} '
+            '--invariant-names --output stack {} '
+            '--allowed-skips {} --maximum-complexity '
+            '--complexity-limit {}{}' 
+    )
     command = command.format(
         'v' if verbose and debug else '',
         't' if theory is not None else '',
