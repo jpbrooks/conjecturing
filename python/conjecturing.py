@@ -331,6 +331,7 @@ def evaluate_property_conjectures(categorical_names,
     precision = []
     recall = []
     f1 = []
+    mcc = []
     classes = []
     if "TARGET" in categorical_names:
         for value in target_property_names:
@@ -343,12 +344,20 @@ def evaluate_property_conjectures(categorical_names,
                 num_hit = 0
                 for example in test_examples:
                     if condition(example) == True:
-                        num_true += 1
+                        num_true += 1  # TP + FP
                         if my_function(example) == True:
-                            num_hit += 1
+                            num_hit += 1 # TP
                     if my_function(example) == True:
-                        num_in_class += 1
+                        num_in_class += 1 # TP + FN
                 support.append(num_true)
+                TN = len(test_examples) - num_true - (num_in_class - num_hit)
+                FP = num_true - num_hit
+                FN = num_in_class - num_hit
+                TP = num_hit
+                if (TP+FP>0) and (TP+FN>0) and (TN+FP>0) and (TN+FN>0):
+                    mcc.append((TP*TN - FP*FN)/math.sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+                else:
+                    mcc.append(0.0)
                 if num_hit > 0: 
                     precision.append(num_hit/num_true)
                     lift.append((num_hit/num_true)/(num_in_class/len(test_examples)))
@@ -375,6 +384,14 @@ def evaluate_property_conjectures(categorical_names,
                     if my_function(example) == False:
                         num_in_class += 1
                 support.append(num_false)
+                TN = len(test_examples) - num_true - (num_in_class - num_hit)
+                FP = num_true - num_hit
+                FN = num_in_class - num_hit
+                TP = num_hit
+                if (TP+FP>0) and (TP+FN>0) and (TN+FP>0) and (TN+FN>0):
+                    mcc.append((TP*TN - FP*FN)/math.sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
+                else:
+                    mcc.append(0.0)
                 if num_hit > 0: 
                     precision.append(num_hit/num_false)
                     lift.append((num_hit/num_false)/(num_in_class/len(test_examples)))
@@ -394,7 +411,8 @@ def evaluate_property_conjectures(categorical_names,
         'precision':precision, 
         'recall': recall, 
         'lift':lift, 
-        'f1': f1})
+        'f1': f1,
+        'mcc': mcc})
     return results_df
 
 def evaluate_invariant_conjectures(Example, inv_conjectures, 
