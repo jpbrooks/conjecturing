@@ -378,16 +378,16 @@ def evaluate_property_conjectures(categorical_names,
                 num_hit = 0
                 for example in test_examples:
                     if condition(example) == False:
-                        num_false += 1
+                        num_false += 1 # TN + FN
                         if my_function(example) == False:
-                            num_hit += 1
+                            num_hit += 1 # TN
                     if my_function(example) == False:
-                        num_in_class += 1
+                        num_in_class += 1  # TN + FP
                 support.append(num_false)
-                TN = len(test_examples) - num_true - (num_in_class - num_hit)
-                FP = num_true - num_hit
-                FN = num_in_class - num_hit
-                TP = num_hit
+                TN = num_hit
+                FN = num_false - num_hit
+                FP = num_in_class - num_hit
+                TP = len(test_examples)-TN-FN-FP
                 if (TP+FP>0) and (TP+FN>0) and (TN+FP>0) and (TN+FN>0):
                     mcc.append((TP*TN - FP*FN)/math.sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
                 else:
