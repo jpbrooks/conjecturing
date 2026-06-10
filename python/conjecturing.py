@@ -350,10 +350,10 @@ def evaluate_property_conjectures(categorical_names,
                     if my_function(example) == True:
                         num_in_class += 1 # TP + FN
                 support.append(num_true)
-                TN = len(test_examples) - num_true - (num_in_class - num_hit)
                 FP = num_true - num_hit
                 FN = num_in_class - num_hit
                 TP = num_hit
+                TN = len(test_examples)-FP-FN-TP
                 if (TP+FP>0) and (TP+FN>0) and (TN+FP>0) and (TN+FN>0):
                     mcc.append((TP*TN - FP*FN)/math.sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN)))
                 else:
@@ -361,9 +361,9 @@ def evaluate_property_conjectures(categorical_names,
                 if num_hit > 0: 
                     precision.append(num_hit/num_true)
                     lift.append((num_hit/num_true)/(num_in_class/len(test_examples)))
-                    recall.append(num_hit/sum(y_test_df.astype('str') == this_value))
+                    recall.append(num_hit/num_in_class)
                     my_precision = num_hit/num_true
-                    my_recall = num_hit/sum(y_test_df.astype('str') == this_value)
+                    my_recall = num_hit/num_in_class
                     f1.append((2*my_precision*my_recall)/(my_precision + my_recall))
                 else:
                     precision.append(0.0)
@@ -395,9 +395,9 @@ def evaluate_property_conjectures(categorical_names,
                 if num_hit > 0: 
                     precision.append(num_hit/num_false)
                     lift.append((num_hit/num_false)/(num_in_class/len(test_examples)))
-                    recall.append(num_hit/(len(test_examples) - sum(y_test_df.astype('str') != this_value)))
+                    recall.append(num_hit/num_in_class)
                     my_precision = num_hit/num_false
-                    my_recall = num_hit/sum(y_test_df.astype('str') != this_value)
+                    my_recall = num_hit/num_in_class
                     f1.append((2*my_precision*my_recall)/(my_precision + my_recall))
                 else:
                     precision.append(0.0)

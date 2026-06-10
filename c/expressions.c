@@ -751,7 +751,7 @@ typedef struct samConjecture {
 } samConjecture;
 
 /* Globals with defaults (you can wire CLI options later) */
-static int    sam_top_k  = 11;      /* --sam-top-k <int> */
+static int    sam_top_k  = 10;      /* --sam-top-k <int> */
 static double sam_alpha = 1;    /* --sam-alpha <double> */
 static double sam_lambda = 0.2;    /* --sam-lambda <double> */
 static double sam_beta   = 0.05;   /* --sam-beta <double> */
